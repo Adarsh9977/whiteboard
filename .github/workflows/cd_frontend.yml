@@ -33,31 +33,32 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/frontend:${{ github.sha }}
 
-      - name: Clean up Docker resources on VM
+      - name: Deploy to VM
         run: |
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" &> ~/ssh_key
-          mkdir -p /home/runner/.ssh
-          chmod 700 ~/ssh_key
-          ssh -o StrictHostKeyChecking=no -i ~/ssh_key ubuntu@13.234.30.94  -t "
-            # Clean up unused containers, images, and volumes
-            docker system prune -af --volumes
-            docker images
-            docker ps -a
-          "
-
-      - name: Deploy to the VM
-        run: |
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" &> ~/ssh_key
-          mkdir  -p /home/runner/.ssh
-          ls /home/runner/.ssh
-          chmod 700 /home/runner/ssh_key
-          ssh -o StrictHostKeyChecking=no -i ~/ssh_key ubuntu@13.234.30.94  -t "docker stop frontend || true;
-          docker rm frontend || true;
-          docker run --name frontend -d -p 3000:3000 \
-          -e DATABASE_URL=${{ secrets.DATABASE_URL }} \
-          -e NEXT_PUBLIC_BACKEND_URL=${{ secrets.NEXT_PUBLIC_BACKEND_URL }} \
-          -e NEXT_PUBLIC_WS_URL=${{ secrets.NEXT_PUBLIC_WS_URL }} \
-          -e EMAIL_USER=${{ secrets.EMAIL_USER }} \
-          -e EMAIL_PASSWORD=${{ secrets.EMAIL_PASSWORD }} \
-          -e NEXT_PUBLIC_FRONTEND_URL=${{ secrets.NEXT_PUBLIC_FRONTEND_URL }} \
-          adarsh9770/frontend:${{ github.sha }}"
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/ssh_key
+          chmod 600 ~/ssh_key
+      
+          ssh -o StrictHostKeyChecking=no -i ~/ssh_key ubuntu@13.234.30.94 << 'EOF'
+      
+            echo "Pulling latest image..."
+            docker pull adarsh9770/frontend:${{ github.sha }}
+      
+            echo "Stopping old container..."
+            docker rm -f frontend 2>/dev/null || true
+      
+            echo "Starting new container..."
+            docker run -d --name frontend -p 3000:3000 \
+              -e DATABASE_URL=${{ secrets.DATABASE_URL }} \
+              -e NEXT_PUBLIC_BACKEND_URL=${{ secrets.NEXT_PUBLIC_BACKEND_URL }} \
+              -e NEXT_PUBLIC_WS_URL=${{ secrets.NEXT_PUBLIC_WS_URL }} \
+              -e EMAIL_USER=${{ secrets.EMAIL_USER }} \
+              -e EMAIL_PASSWORD=${{ secrets.EMAIL_PASSWORD }} \
+              -e NEXT_PUBLIC_FRONTEND_URL=${{ secrets.NEXT_PUBLIC_FRONTEND_URL }} \
+              adarsh9770/frontend:${{ github.sha }}
+      
+            echo "Cleaning dangling images..."
+            docker image prune -f
+      
+            docker ps
+      
+          EOF
